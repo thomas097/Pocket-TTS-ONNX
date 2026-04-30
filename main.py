@@ -1,10 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from src.pocket_tts.pocket_tts import PocketTTS
+from src.pocket_tts import PocketTTS
 
 model = PocketTTS(
-    models_dir="models/pocket-tts/english",
+    model_dir="models/pocket-tts",
     voice="samples/reference_sample.wav"
     )
 

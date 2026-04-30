@@ -2,18 +2,19 @@ import os
 import queue
 import threading
 import time
-from pathlib import Path
-from typing import Generator, Union
 import numpy as np
 import onnxruntime as ort
 import sentencepiece as spm
 import soundfile as sf
 import scipy.signal
 
+from pathlib import Path
+from typing import Generator, Union
 
 class PocketTTS:
     """
-    Pocket TTS implementation using ONNX runtime.
+    The Pocket TTS text-to-speech model from Kyutai Labs based on:
+    "Continuous Audio Language Models" by Rouard et al. (2025)
     """
 
     SAMPLE_RATE = 24000
@@ -24,14 +25,14 @@ class PocketTTS:
 
     def __init__(
         self,
-        models_dir: str,
+        model_dir: str,
         voice: Union[str, Path, np.ndarray],
         precision: str = "int8",
         device: str = "auto",
         temperature: float = 0.7,
         lsd_steps: int = 10,
     ):
-        self.models_dir = Path(models_dir)
+        self.models_dir = Path(model_dir)
 
         if precision not in self.VALID_PRECISIONS:
             raise ValueError(f"precision must be one of {self.VALID_PRECISIONS}, got '{precision}'")
@@ -101,7 +102,6 @@ class PocketTTS:
             str(self.models_dir / "text_conditioner.onnx"),
             sess_options=sess_opts, providers=self.providers
         )
-        # Dual model split: main (transformer) + flow (flow network)
         self.flow_lm_main = ort.InferenceSession(
             str(self.models_dir / flow_main_file),
             sess_options=sess_opts, providers=self.providers
