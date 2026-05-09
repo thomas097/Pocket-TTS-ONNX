@@ -164,49 +164,47 @@ class PocketTTS:
             yield latent
             curr = latent
 
-    def stream_fast(self, text: str):
-        text_ids = self._tokenizer.tokenize(text)
+    def _decode_latents(
+            self, 
+            latents: list[np.ndarray], 
+            mimi_state: dict[str, np.ndarray]
+            ) -> np.ndarray:
+        return self._mimi_decoder.decode(
+            latent=np.concatenate(latents, axis=1),
+            state=mimi_state
+        ).squeeze()
 
-        generated_latents = []
-        decoded_frames = 0
+    def stream(self, text: str) -> Generator:
+        text_ids = self._tokenizer.tokenize(text)
 
         max_frames = self._config.max_frames
         max_chunk_frames = self._config.max_chunk_frames
 
+        latent_frames = []
+        decoded_frames = 0
+        
         mimi_state = self._mimi_decoder.reset_state()
-
+        
         for latent in self._run_flow_lm(self._voice_emb, text_ids, max_frames):
-            generated_latents.append(latent)
-
-            pending = len(generated_latents) - decoded_frames
+            latent_frames.append(latent)
 
             # Decode ASAP in large batches
+            pending = len(latent_frames) - decoded_frames
             if pending >= max_chunk_frames:
 
-                latents_chunk = np.concatenate(
-                    generated_latents[decoded_frames: decoded_frames + max_chunk_frames],
-                    axis=1
+                audio_chunk = self._decode_latents(
+                    latents=latent_frames[decoded_frames: decoded_frames + max_chunk_frames],
+                    mimi_state=mimi_state
                 )
-
-                audio_chunk = self._mimi_decoder.decode(
-                    latent=latents_chunk,
-                    state=mimi_state
-                ).squeeze()
 
                 decoded_frames += max_chunk_frames
                 yield audio_chunk
 
         # Flush leftovers
-        if decoded_frames < len(generated_latents):
-
-            remaining = np.concatenate(
-                generated_latents[decoded_frames:],
-                axis=1
+        if decoded_frames < len(latent_frames):
+            audio_chunk = self._decode_latents(
+                latents=latent_frames[decoded_frames:],
+                mimi_state=mimi_state
             )
-
-            audio_chunk = self._mimi_decoder.decode(
-                latent=remaining,
-                state=mimi_state
-            ).squeeze()
 
             yield audio_chunk

@@ -15,7 +15,7 @@ while True:
     if not text:
         break
 
-    chunks = list(model.stream_fast(text))
+    chunks = list(model.stream(text))
     audio = np.concatenate(chunks, axis=0)
 
     sd.play(audio, samplerate=24_000, blocking=True) 
