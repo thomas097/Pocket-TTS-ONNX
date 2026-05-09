@@ -13,9 +13,8 @@ class PocketTTSConfig:
     temperature: float = 0.1
     lsd_steps: int = 5
     max_frames: int = 512
-    first_chunk_frames: int = 2
-    target_buffer_sec: float = 0.2
     max_chunk_frames: int = 15
+    frames_after_eos: int = 5
 
 class PocketTTS:
     """
@@ -68,6 +67,10 @@ class PocketTTS:
         self._flow_buffers = self._precompute_flow_buffers()
         self._voice_emb = self._mimi_encoder.encode(voice_ref)
 
+    # ============
+    #   Internal
+    # ============
+
     def _precompute_flow_buffers(self) -> np.ndarray:
         """
         Pre-computes time step buffers for flow matching.
@@ -84,9 +87,7 @@ class PocketTTS:
     def _run_flow_lm(
         self,
         voice_emb: np.ndarray,
-        token_ids: np.ndarray,
-        max_frames: int = 500,
-        frames_after_eos: int = 3,
+        token_ids: np.ndarray
         ) -> Generator[np.ndarray, None, None]:
         """
         Run flow LM autoregressive generation, yielding latents.
@@ -124,7 +125,7 @@ class PocketTTS:
         
         eos_step = None
 
-        for step in range(max_frames):
+        for step in range(self._config.max_frames):
             # Run main model to get conditioning and EOS
             res_step = self._flow_lm_conditioner.condition_emb(
                 sequence=curr,
@@ -141,7 +142,7 @@ class PocketTTS:
                 eos_step = step
             
             # Stop only after frames_after_eos additional frames
-            if eos_step is not None and step >= eos_step + frames_after_eos:
+            if eos_step is not None and step >= eos_step + self._config.frames_after_eos:
                 break
 
             # Flow matching with external loop (enables temperature control)
@@ -164,46 +165,47 @@ class PocketTTS:
             yield latent
             curr = latent
 
-    def _decode_latents(
+    def _decode_latent_frames(
             self, 
-            latents: list[np.ndarray], 
+            latent_frames: list[np.ndarray], 
             mimi_state: dict[str, np.ndarray]
             ) -> np.ndarray:
         return self._mimi_decoder.decode(
-            latent=np.concatenate(latents, axis=1),
+            latent=np.concatenate(latent_frames, axis=1),
             state=mimi_state
         ).squeeze()
+    
+    # ==============
+    #   Public API
+    # ==============
 
     def stream(self, text: str) -> Generator:
         text_ids = self._tokenizer.tokenize(text)
 
-        max_frames = self._config.max_frames
-        max_chunk_frames = self._config.max_chunk_frames
-
-        latent_frames = []
-        decoded_frames = 0
+        frames = []
+        n_decoded_frames = 0
         
         mimi_state = self._mimi_decoder.reset_state()
         
-        for latent in self._run_flow_lm(self._voice_emb, text_ids, max_frames):
-            latent_frames.append(latent)
+        for latent_frame in self._run_flow_lm(self._voice_emb, text_ids):
+            frames.append(latent_frame)
 
             # Decode ASAP in large batches
-            pending = len(latent_frames) - decoded_frames
-            if pending >= max_chunk_frames:
+            pending = len(frames) - n_decoded_frames
+            if pending >= self._config.max_chunk_frames:
 
-                audio_chunk = self._decode_latents(
-                    latents=latent_frames[decoded_frames: decoded_frames + max_chunk_frames],
+                audio_chunk = self._decode_latent_frames(
+                    latent_frames=frames[n_decoded_frames: n_decoded_frames + self._config.max_chunk_frames],
                     mimi_state=mimi_state
                 )
 
-                decoded_frames += max_chunk_frames
+                n_decoded_frames += self._config.max_chunk_frames
                 yield audio_chunk
 
         # Flush leftovers
-        if decoded_frames < len(latent_frames):
-            audio_chunk = self._decode_latents(
-                latents=latent_frames[decoded_frames:],
+        if n_decoded_frames < len(frames):
+            audio_chunk = self._decode_latent_frames(
+                latent_frames=frames[n_decoded_frames:],
                 mimi_state=mimi_state
             )
 
