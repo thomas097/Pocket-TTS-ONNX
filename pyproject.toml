@@ -5,11 +5,12 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "matplotlib>=3.10.9",
+    "moviepy>=2.2.1",
     "numpy>=2.4.4",
     "onnxruntime>=1.25.1",
     "scipy>=1.17.1",
     "sentencepiece>=0.2.1",
+    "sounddevice>=0.5.5",
     "soundfile>=0.13.1",
 ]
 

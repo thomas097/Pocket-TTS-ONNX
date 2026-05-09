@@ -1,16 +1,21 @@
 import numpy as np
-import matplotlib.pyplot as plt
+import sounddevice as sd
+from pathlib import Path
 
 from src.pocket_tts import PocketTTS
 
 model = PocketTTS(
-    model_dir="models/pocket-tts",
-    voice="samples/reference_sample.wav"
+    model_dir=Path("./models/pocket-tts"),
+    voice_ref=Path("./samples/jean.wav")
     )
 
-text = "Hello how are you?"
+print("Type something (Enter to quit)")
+while True:
+    text = input(">> ")
+    if not text:
+        break
 
-chunks = np.concatenate(list(model.stream(text)))
+    chunks = list(model.stream_fast(text))
+    audio = np.concatenate(chunks, axis=0)
 
-plt.plot(chunks)
-plt.show()
+    sd.play(audio, samplerate=24_000, blocking=True) 
